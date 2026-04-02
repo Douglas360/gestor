@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useGestor } from "@/context/GestorContext";
+import { normalizeWhatsappPhone } from "@/lib/phone";
 
 export default function NewOperadorModal() {
   const { isNewOperadorModalOpen, closeNewOperadorModal, createOperador } = useGestor();
@@ -9,22 +10,29 @@ export default function NewOperadorModal() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [cargo, setCargo] = useState("");
 
   if (!isNewOperadorModalOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!nome.trim() || !whatsapp.trim()) {
-      alert("Nome e WhatsApp são obrigatórios!");
+    if (!nome.trim()) {
+      alert("Nome é obrigatório!");
       return;
     }
 
-    createOperador({
+    const normalized = normalizeWhatsappPhone(whatsapp);
+    if (!normalized.ok) {
+      setWhatsappError(normalized.error);
+      return;
+    }
+
+    await createOperador({
       nome: nome.trim(),
       email: email.trim(),
-      whatsapp: whatsapp.trim(),
+      whatsapp: normalized.value,
       cargo: cargo.trim(),
     });
 
@@ -36,6 +44,7 @@ export default function NewOperadorModal() {
     setEmail("");
     setWhatsapp("");
     setCargo("");
+    setWhatsappError(null);
     closeNewOperadorModal();
   };
 
@@ -86,11 +95,23 @@ export default function NewOperadorModal() {
               <input
                 type="text"
                 value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
+                onChange={(e) => {
+                  setWhatsapp(e.target.value);
+                  if (whatsappError) setWhatsappError(null);
+                }}
+                onBlur={() => {
+                  const normalized = normalizeWhatsappPhone(whatsapp);
+                  if (normalized.ok) setWhatsapp(normalized.value);
+                }}
                 placeholder="Ex: +55 11 99999-9999"
-                className="w-full bg-surface-container-highest p-4 rounded-xl text-sm font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-secondary/50 transition-all border border-transparent focus:border-primary/30"
+                className={`w-full bg-surface-container-highest p-4 rounded-xl text-sm font-medium text-on-surface outline-none focus:ring-2 placeholder:text-secondary/50 transition-all border ${
+                  whatsappError ? "border-error focus:ring-error/40" : "border-transparent focus:border-primary/30 focus:ring-primary/50"
+                }`}
                 required
               />
+              {whatsappError && (
+                <p className="text-error text-xs font-medium">{whatsappError}</p>
+              )}
             </div>
 
             {/* Email */}

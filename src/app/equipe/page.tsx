@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useGestor } from "@/context/GestorContext";
 import { Operador } from "@/lib/types";
+import { formatWhatsappPhone } from "@/lib/phoneFormat";
 
 export default function EquipePage() {
   const { operadores, openNewOperadorModal, updateOperador, deleteOperador, tasks } = useGestor();
@@ -104,7 +105,7 @@ export default function EquipePage() {
                   <div className="space-y-3 mb-6">
                     <div className="flex items-center gap-3 text-sm text-secondary">
                       <span className="material-symbols-outlined text-[18px]">phone_iphone</span>
-                      <span className="truncate">{op.whatsapp}</span>
+                      <span className="truncate">{formatWhatsappPhone(op.whatsapp)}</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-secondary">
                       <span className="material-symbols-outlined text-[18px]">mail</span>

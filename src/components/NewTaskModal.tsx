@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useGestor } from "@/context/GestorContext";
 import { Priority, Status } from "@/lib/types";
-import { TAGS_SUGERIDAS } from "@/lib/mockData";
+import { TAGS_SUGERIDAS } from "@/lib/mockData"; // static suggestions are fine
 
 const PRIORITIES: { value: Priority; label: string; color: string; icon: string }[] = [
   { value: "urgente", label: "Urgente", color: "text-red-400 bg-red-900/30 border-red-900/50", icon: "local_fire_department" },
@@ -66,7 +66,7 @@ export default function NewTaskModal() {
     return e;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) {
@@ -74,9 +74,8 @@ export default function NewTaskModal() {
       return;
     }
     setIsSubmitting(true);
-    // Simulate async
-    setTimeout(() => {
-      createTask({
+    try {
+      await createTask({
         titulo: titulo.trim(),
         descricao: descricao.trim() || undefined,
         prioridade,
@@ -86,8 +85,9 @@ export default function NewTaskModal() {
         tags,
       });
       closeNewTaskModal();
+    } finally {
       setIsSubmitting(false);
-    }, 300);
+    }
   }
 
   function toggleTag(tag: string) {
