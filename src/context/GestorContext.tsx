@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { Task, Operador, Status, Priority, Subtarefa } from "@/lib/types";
 import * as api from "@/lib/api";
 
@@ -71,6 +72,7 @@ const GestorContext = createContext<GestorContextType | null>(null);
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function GestorProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [operadores, setOperadores] = useState<Operador[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -117,20 +119,36 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedTaskId]);
 
+  // Auth gate: redirect to /login when not authenticated.
   useEffect(() => {
+    // Allow public auth pages
+    if (pathname === '/login' || pathname === '/cadastro') return;
+
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('gestor.authToken') : null;
+    if (!token) {
+      window.location.href = '/login';
+      return;
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    // Only load data when authenticated (API will 401 otherwise).
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('gestor.authToken') : null;
+    if (!token) return;
     void reloadAll();
   }, [reloadAll]);
 
   const createOperador = useCallback(async (input: NewOperadorInput): Promise<Operador> => {
     const { mapApiOperator } = await import("@/lib/mappers");
-    const created = await api.createOperator({
+    const created: any = await api.createOperator({
       name: input.nome,
       wa_phone: input.whatsapp,
       active: true,
       email: input.email || null,
       role: input.cargo || null,
-      avatar_url: input.avatar || null,
+      avatar_url: input.avatar || null
     });
+
     const mapped = mapApiOperator(created);
     setOperadores((prev) => [mapped, ...prev]);
     return mapped;

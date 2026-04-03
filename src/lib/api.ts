@@ -1,12 +1,38 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://gestorapi.magicti.com';
+function getTenantId(): string {
+  const env = process.env.NEXT_PUBLIC_TENANT_ID || '';
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem('gestor.tenantId') || '';
+    const hasToken = Boolean(window.localStorage.getItem('gestor.authToken'));
+    // If authenticated, prefer stored tenant (multi-user). Otherwise keep env (MVP default).
+    if (hasToken && stored) return stored;
+  }
+  if (env) return env;
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem('gestor.tenantId') || '';
+}
+
 export const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || '';
+
+function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem('gestor.authToken');
+}
+
+function requireTenantId(): string {
+  const t = getTenantId();
+  if (!t) throw new Error('Tenant não definido. Faça login novamente.');
+  return t;
+}
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const token = getAuthToken();
   const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {})
     },
     cache: 'no-store'
@@ -34,13 +60,14 @@ export type ApiOperator = {
 };
 
 export async function listOperators() {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ data: ApiOperator[] }>(`/v1/tenants/${TENANT_ID}/operators`);
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('Tenant not set. Faça login novamente.');
+  return apiFetch<{ data: ApiOperator[] }>(`/v1/tenants/${tenantId}/operators`);
 }
 
 export async function createOperator(input: { name: string; wa_phone: string; active?: boolean; email?: string | null; role?: string | null; avatar_url?: string | null }) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<ApiOperator>(`/v1/tenants/${TENANT_ID}/operators`, {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiOperator>(`/v1/tenants/${tenantId}/operators`, {
     method: 'POST',
     body: JSON.stringify(input)
   });
@@ -50,16 +77,16 @@ export async function updateOperator(
   id: string,
   patch: Partial<{ name: string; wa_phone: string; active: boolean; email: string | null; role: string | null; avatar_url: string | null }>
 ) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<ApiOperator>(`/v1/tenants/${TENANT_ID}/operators/${id}`, {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiOperator>(`/v1/tenants/${tenantId}/operators/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
 }
 
 export async function deleteOperator(id: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ ok: true }>(`/v1/tenants/${TENANT_ID}/operators/${id}`, { method: 'DELETE' });
+  const tenantId = requireTenantId();
+  return apiFetch<{ ok: true }>(`/v1/tenants/${tenantId}/operators/${id}`, { method: 'DELETE' });
 }
 
 // Tasks
@@ -90,8 +117,8 @@ export type ApiTask = {
 };
 
 export async function listTasks() {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ data: ApiTask[] }>(`/v1/tenants/${TENANT_ID}/tasks`);
+  const tenantId = requireTenantId();
+  return apiFetch<{ data: ApiTask[] }>(`/v1/tenants/${tenantId}/tasks`);
 }
 
 export async function createTask(input: {
@@ -105,8 +132,8 @@ export async function createTask(input: {
   subtasks?: any[];
   reminder?: string | null;
 }) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<ApiTask>(`/v1/tenants/${TENANT_ID}/tasks`, {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTask>(`/v1/tenants/${tenantId}/tasks`, {
     method: 'POST',
     body: JSON.stringify(input)
   });
@@ -126,26 +153,42 @@ export async function updateTask(
     reminder: string | null;
   }>
 ) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<ApiTask>(`/v1/tenants/${TENANT_ID}/tasks/${id}`, {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTask>(`/v1/tenants/${tenantId}/tasks/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
 }
 
 export async function deleteTask(id: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ ok: true }>(`/v1/tenants/${TENANT_ID}/tasks/${id}`, { method: 'DELETE' });
+  const tenantId = requireTenantId();
+  return apiFetch<{ ok: true }>(`/v1/tenants/${tenantId}/tasks/${id}`, { method: 'DELETE' });
 }
 
 export async function notifyTask(id: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ ok: true }>(`/v1/tenants/${TENANT_ID}/tasks/${id}/notify`, { method: 'POST', body: '{}' });
+  const tenantId = requireTenantId();
+  return apiFetch<{ ok: true }>(`/v1/tenants/${tenantId}/tasks/${id}/notify`, { method: 'POST', body: '{}' });
 }
 
 export async function listTaskEvents(taskId: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ data: ApiTaskEvent[] }>(`/v1/tenants/${TENANT_ID}/tasks/${taskId}/events`);
+  const tenantId = requireTenantId();
+  return apiFetch<{ data: ApiTaskEvent[] }>(`/v1/tenants/${tenantId}/tasks/${taskId}/events`);
+}
+
+// Tenant Settings
+export type ApiTenantSettings = { id: string; name: string; admin_wa_phone: string | null };
+
+export async function getTenantSettings() {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTenantSettings>(`/v1/tenants/${tenantId}/settings`);
+}
+
+export async function updateTenantSettings(patch: Partial<{ admin_wa_phone: string | null }>) {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTenantSettings>(`/v1/tenants/${tenantId}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch)
+  });
 }
 
 // WhatsApp Instances
@@ -161,34 +204,34 @@ export type ApiWaInstance = {
 };
 
 export async function listWaInstances() {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ data: ApiWaInstance[] }>(`/v1/tenants/${TENANT_ID}/whatsapp/instances`);
+  const tenantId = requireTenantId();
+  return apiFetch<{ data: ApiWaInstance[] }>(`/v1/tenants/${tenantId}/whatsapp/instances`);
 }
 
 export async function createWaInstance(input?: { instanceName?: string }) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ instance: ApiWaInstance; evolution: any }>(`/v1/tenants/${TENANT_ID}/whatsapp/instances`, {
+  const tenantId = requireTenantId();
+  return apiFetch<{ instance: ApiWaInstance; evolution: any }>(`/v1/tenants/${tenantId}/whatsapp/instances`, {
     method: 'POST',
     body: JSON.stringify(input || {})
   });
 }
 
 export async function getWaQr(instanceId: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
-  return apiFetch<{ ok: true; instance_name: string; qr: any }>(`/v1/tenants/${TENANT_ID}/whatsapp/instances/${instanceId}/qr`);
+  const tenantId = requireTenantId();
+  return apiFetch<{ ok: true; instance_name: string; qr: any }>(`/v1/tenants/${tenantId}/whatsapp/instances/${instanceId}/qr`);
 }
 
 export async function getWaStatus(instanceId: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
+  const tenantId = requireTenantId();
   return apiFetch<{ ok: true; instance_name: string; evolution: any; saved_status: string | null }>(
-    `/v1/tenants/${TENANT_ID}/whatsapp/instances/${instanceId}/status`
+    `/v1/tenants/${tenantId}/whatsapp/instances/${instanceId}/status`
   );
 }
 
 export async function deleteWaInstance(instanceId: string) {
-  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
+  const tenantId = requireTenantId();
   return apiFetch<{ ok: true; deleted_instance_id: string; evolution: any }>(
-    `/v1/tenants/${TENANT_ID}/whatsapp/instances/${instanceId}`,
+    `/v1/tenants/${tenantId}/whatsapp/instances/${instanceId}`,
     { method: 'DELETE' }
   );
 }

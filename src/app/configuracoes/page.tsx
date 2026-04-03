@@ -51,6 +51,9 @@ export default function ConfiguracoesPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [adminPhone, setAdminPhone] = useState<string>('');
+  const [isSavingAdminPhone, setIsSavingAdminPhone] = useState(false);
+
   const activeInstance = useMemo(
     () => instances.find((i) => i.id === activeInstanceId) || instances[0] || null,
     [instances, activeInstanceId]
@@ -59,6 +62,24 @@ export default function ConfiguracoesPage() {
   async function reloadInstances() {
     const res = await api.listWaInstances();
     setInstances(res.data || []);
+  }
+
+  async function reloadTenantSettings() {
+    const s = await api.getTenantSettings();
+    setAdminPhone(s.admin_wa_phone || '');
+  }
+
+  async function saveAdminPhone() {
+    setIsSavingAdminPhone(true);
+    setError(null);
+    try {
+      const saved = await api.updateTenantSettings({ admin_wa_phone: adminPhone || null });
+      setAdminPhone(saved.admin_wa_phone || '');
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setIsSavingAdminPhone(false);
+    }
   }
 
   async function refreshStatus(instanceId: string) {
@@ -133,6 +154,7 @@ export default function ConfiguracoesPage() {
     (async () => {
       try {
         await reloadInstances();
+        await reloadTenantSettings();
       } catch (e: any) {
         setError(e?.message || String(e));
       }
@@ -169,6 +191,33 @@ export default function ConfiguracoesPage() {
           </div>
 
           <section className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-6">
+            <div className="mb-6 bg-surface-container-highest/30 border border-outline-variant/10 rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-[11px] font-bold text-secondary uppercase tracking-widest">Notificações Administrativas</div>
+                  <div className="text-sm font-bold text-on-surface">WhatsApp do Gestor (alertas)</div>
+                  <p className="text-xs text-secondary mt-1">
+                    Número que receberá alertas de atualização de tarefas. Pode ser diferente do número conectado na IA.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={adminPhone}
+                    onChange={(e) => setAdminPhone(e.target.value)}
+                    placeholder="Ex: +55 11 99999-9999"
+                    className="w-[260px] bg-surface-container-highest p-3 rounded-xl text-sm font-medium text-on-surface outline-none border border-outline-variant/10 focus:border-primary/30"
+                  />
+                  <button
+                    onClick={saveAdminPhone}
+                    disabled={isSavingAdminPhone}
+                    className="px-4 py-3 rounded-xl font-bold text-sm bg-primary text-on-primary disabled:opacity-50"
+                  >
+                    {isSavingAdminPhone ? 'Salvando…' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
