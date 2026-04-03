@@ -110,6 +110,25 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function handleDeleteActive() {
+    if (!activeInstance) return;
+    if (!confirm(`Excluir a instância "${activeInstance.instance_name}"?`)) return;
+
+    setIsBusy(true);
+    setError(null);
+    try {
+      await api.deleteWaInstance(activeInstance.id);
+      setActiveInstanceId(null);
+      setQr(null);
+      setStatus(null);
+      await reloadInstances();
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -169,6 +188,16 @@ export default function ConfiguracoesPage() {
                 >
                   Atualizar
                 </button>
+
+                <button
+                  onClick={handleDeleteActive}
+                  disabled={isBusy || !activeInstance}
+                  className="px-4 py-2 rounded-xl font-bold text-sm bg-error-container/40 text-error hover:bg-error-container/60 disabled:opacity-50"
+                  title="Excluir instância"
+                >
+                  Excluir
+                </button>
+
                 <button
                   onClick={handleCreateAndConnect}
                   disabled={isBusy}

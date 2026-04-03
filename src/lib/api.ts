@@ -169,3 +169,11 @@ export async function getWaStatus(instanceId: string) {
     `/v1/tenants/${TENANT_ID}/whatsapp/instances/${instanceId}/status`
   );
 }
+
+export async function deleteWaInstance(instanceId: string) {
+  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
+  return apiFetch<{ ok: true; deleted_instance_id: string; evolution: any }>(
+    `/v1/tenants/${TENANT_ID}/whatsapp/instances/${instanceId}`,
+    { method: 'DELETE' }
+  );
+}
