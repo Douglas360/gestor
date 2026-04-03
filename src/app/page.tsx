@@ -8,6 +8,7 @@ import { useGestor } from "@/context/GestorContext";
 import { Task } from "@/lib/types";
 import * as api from "@/lib/api";
 import { mapTaskEventToActivity } from "@/lib/taskEvents";
+import { supabase, isRealtimeEnabled } from "@/lib/supabaseClient";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -79,13 +80,48 @@ export default function DashboardPage() {
 
     void load();
 
-    const timer = setInterval(() => {
-      void load({ silent: true });
-    }, 5000);
+    // Realtime via Supabase (preferred). Fallback to polling when env vars not set.
+    let channel: any = null;
+    let timer: any = null;
+
+    if (isRealtimeEnabled() && supabase) {
+      channel = supabase
+        .channel(`task:${selectedTask.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'task_events',
+            filter: `task_id=eq.${selectedTask.id}`,
+          },
+          () => {
+            void load({ silent: true });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tasks',
+            filter: `id=eq.${selectedTask.id}`,
+          },
+          () => {
+            void reloadAll();
+          }
+        )
+        .subscribe();
+    } else {
+      timer = setInterval(() => {
+        void load({ silent: true });
+      }, 5000);
+    }
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
+      if (channel && supabase) supabase.removeChannel(channel);
     };
   }, [selectedTask?.id, reloadAll]);
 
