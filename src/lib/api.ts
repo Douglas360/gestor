@@ -63,6 +63,16 @@ export async function deleteOperator(id: string) {
 }
 
 // Tasks
+export type ApiTaskEvent = {
+  id: string;
+  tenant_id: string;
+  task_id: string;
+  kind: string;
+  data: any;
+  created_at: string;
+  actor_operator_id: string | null;
+};
+
 export type ApiTask = {
   id: string;
   tenant_id: string;
@@ -131,6 +141,11 @@ export async function deleteTask(id: string) {
 export async function notifyTask(id: string) {
   if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
   return apiFetch<{ ok: true }>(`/v1/tenants/${TENANT_ID}/tasks/${id}/notify`, { method: 'POST', body: '{}' });
+}
+
+export async function listTaskEvents(taskId: string) {
+  if (!TENANT_ID) throw new Error('NEXT_PUBLIC_TENANT_ID not set');
+  return apiFetch<{ data: ApiTaskEvent[] }>(`/v1/tenants/${TENANT_ID}/tasks/${taskId}/events`);
 }
 
 // WhatsApp Instances

@@ -6,11 +6,16 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useGestor } from "@/context/GestorContext";
 import { Task } from "@/lib/types";
+import * as api from "@/lib/api";
+import { mapTaskEventToActivity } from "@/lib/taskEvents";
 
 export default function DashboardPage() {
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [activities, setActivities] = useState<import("@/lib/types").TaskActivity[]>([]);
 
   const {
     tasks,
@@ -35,6 +40,26 @@ export default function DashboardPage() {
     const id = params.get('selected');
     if (id) selectTask(id);
   }, [mounted, selectTask]);
+
+  useEffect(() => {
+    if (!selectedTask) {
+      setActivities([]);
+      return;
+    }
+
+    (async () => {
+      setEventsLoading(true);
+      setEventsError(null);
+      try {
+        const res = await api.listTaskEvents(selectedTask.id);
+        setActivities((res.data || []).map(mapTaskEventToActivity));
+      } catch (e: any) {
+        setEventsError(e?.message || String(e));
+      } finally {
+        setEventsLoading(false);
+      }
+    })();
+  }, [selectedTask?.id]);
 
   // Grouping tasks roughly by "hoje", "amanha", "proximos" (for UI sake)
   // To avoid hydration mismatch, we depend on these computations only when mounted
@@ -374,15 +399,27 @@ export default function DashboardPage() {
               </div>
 
               {/* Activity History */}
-              {selectedTask.activities && selectedTask.activities.length > 0 && (
-                <div className="mt-8 space-y-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="material-symbols-outlined text-secondary">history</span>
-                    <h4 className="text-sm font-bold text-on-surface">Histórico</h4>
-                  </div>
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="material-symbols-outlined text-secondary">history</span>
+                  <h4 className="text-sm font-bold text-on-surface">Histórico</h4>
+                </div>
+
+                {eventsLoading && (
+                  <div className="text-sm text-secondary">Carregando histórico...</div>
+                )}
+
+                {eventsError && (
+                  <div className="text-sm text-error-dim">{eventsError}</div>
+                )}
+
+                {!eventsLoading && !eventsError && activities.length === 0 && (
+                  <div className="text-sm text-secondary">Sem eventos ainda.</div>
+                )}
+
+                {!eventsLoading && !eventsError && activities.length > 0 && (
                   <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:w-0.5 before:bg-outline-variant/10">
-                    {/* Sort activities by timestamp descending for display */}
-                    {[...selectedTask.activities].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((activity, index) => {
+                    {activities.map((activity) => {
                       // pick icon based on type
                       let icon = "info";
                       let colorClass = "text-secondary";
@@ -429,8 +466,8 @@ export default function DashboardPage() {
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </section>
