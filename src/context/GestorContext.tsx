@@ -45,6 +45,7 @@ type GestorContextType = {
   reloadAll: () => Promise<void>;
   createTask: (input: NewTaskInput) => Promise<Task>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   notifyTask: (id: string) => Promise<void>;
 
   toggleSubtarefa: (taskId: string, subtarefaId: string) => void;
@@ -191,6 +192,19 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
     } as any);
   }, []);
 
+  const deleteTask = useCallback(async (id: string) => {
+    setTasks((prev) => {
+      const remaining = prev.filter((t) => t.id !== id);
+      setSelectedTaskId((current) => {
+        if (current !== id) return current;
+        return remaining[0]?.id || null;
+      });
+      return remaining;
+    });
+
+    await api.deleteTask(id);
+  }, []);
+
   const notifyTask = useCallback(async (id: string) => {
     await api.notifyTask(id);
   }, []);
@@ -278,6 +292,7 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
         reloadAll,
         createTask,
         updateTask,
+        deleteTask,
         notifyTask,
         toggleSubtarefa,
         addSubtarefa,

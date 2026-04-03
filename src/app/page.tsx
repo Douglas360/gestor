@@ -26,7 +26,9 @@ export default function DashboardPage() {
     toggleConcluida,
     changeStatus,
     updateTask,
+    deleteTask,
     toggleSubtarefa,
+    reloadAll,
   } = useGestor();
 
   useEffect(() => {
@@ -47,19 +49,45 @@ export default function DashboardPage() {
       return;
     }
 
-    (async () => {
-      setEventsLoading(true);
-      setEventsError(null);
+    let cancelled = false;
+    let lastTopEventId: string | null = null;
+
+    const load = async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) {
+        setEventsLoading(true);
+        setEventsError(null);
+      }
+
       try {
         const res = await api.listTaskEvents(selectedTask.id);
-        setActivities((res.data || []).map(mapTaskEventToActivity));
+        const evts = res.data || [];
+        if (cancelled) return;
+
+        setActivities(evts.map(mapTaskEventToActivity));
+
+        const topId = evts[0]?.id || null;
+        if (topId && topId !== lastTopEventId) {
+          lastTopEventId = topId;
+          await reloadAll();
+        }
       } catch (e: any) {
-        setEventsError(e?.message || String(e));
+        if (!cancelled) setEventsError(e?.message || String(e));
       } finally {
-        setEventsLoading(false);
+        if (!cancelled && !opts?.silent) setEventsLoading(false);
       }
-    })();
-  }, [selectedTask?.id]);
+    };
+
+    void load();
+
+    const timer = setInterval(() => {
+      void load({ silent: true });
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [selectedTask?.id, reloadAll]);
 
   // Grouping tasks roughly by "hoje", "amanha", "proximos" (for UI sake)
   // To avoid hydration mismatch, we depend on these computations only when mounted
@@ -86,6 +114,21 @@ export default function DashboardPage() {
     if (!responsavelId) return "?";
     const op = getOperador(responsavelId);
     return op?.initials || "?";
+  };
+
+  const getStatusMeta = (status: import("@/lib/types").Status) => {
+    switch (status) {
+      case "pendente":
+        return { label: "Pendente", dot: "bg-secondary/60", pill: "bg-surface-container-highest text-secondary border-outline-variant/20" };
+      case "em_andamento":
+        return { label: "Em andamento", dot: "bg-sky-400", pill: "bg-sky-900/20 text-sky-300 border-sky-900/40" };
+      case "em_revisao":
+        return { label: "Em revisão", dot: "bg-yellow-400", pill: "bg-yellow-900/20 text-yellow-300 border-yellow-900/40" };
+      case "concluida":
+        return { label: "Concluída", dot: "bg-primary", pill: "bg-primary/10 text-primary border-primary/20" };
+      default:
+        return { label: status, dot: "bg-secondary/60", pill: "bg-surface-container-highest text-secondary border-outline-variant/20" };
+    }
   };
 
   const renderTask = (task: Task) => {
@@ -122,6 +165,15 @@ export default function DashboardPage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {/* Status pill */}
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-tighter border ${getStatusMeta(task.status).pill}`}
+            title={getStatusMeta(task.status).label}
+          >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle ${getStatusMeta(task.status).dot}`} />
+            {getStatusMeta(task.status).label}
+          </span>
+
           {task.prioridade === "urgente" && (
             <span className="text-[10px] bg-error-container/20 text-error-dim px-2 py-0.5 rounded uppercase font-bold tracking-tighter">
               Urgente
@@ -250,20 +302,25 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-2 text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full uppercase">
-                  {!selectedTask.concluida ? (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-                      Ativa
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-primary"></span>
-                      Concluída
-                    </>
-                  )}
+                <div
+                  className={`flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full uppercase border ${getStatusMeta(selectedTask.status).pill}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${getStatusMeta(selectedTask.status).dot} ${selectedTask.status !== "concluida" ? "animate-pulse" : ""}`} />
+                  {getStatusMeta(selectedTask.status).label}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (!selectedTask) return;
+                      const ok = window.confirm(`Excluir a tarefa "${selectedTask.titulo}"? Essa ação não pode ser desfeita.`);
+                      if (!ok) return;
+                      void deleteTask(selectedTask.id);
+                    }}
+                    className="material-symbols-outlined text-secondary hover:text-error-dim transition-colors"
+                    title="Excluir tarefa"
+                  >
+                    delete
+                  </button>
                   <button className="material-symbols-outlined text-secondary hover:text-on-surface transition-colors">
                     share
                   </button>
