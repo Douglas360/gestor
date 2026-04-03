@@ -1,0 +1,33 @@
+{
+  "name": "gestor",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm -ws run build",
+    "dev": "npm -ws run dev",
+    "lint": "npm -ws run lint",
+    "start": "npm -ws run start",
+    "start:prod": "npm -ws run start:prod"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.17",
+    "@nestjs/config": "^4.0.3",
+    "@nestjs/core": "^11.1.17",
+    "@nestjs/platform-express": "^11.1.17",
+    "@supabase/supabase-js": "^2.101.1",
+    "@types/node": "^25.5.0",
+    "axios": "^1.14.0",
+    "pg": "^8.20.0",
+    "pg-boss": "^12.15.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.2",
+    "zod": "^4.3.6"
+  }
+}
