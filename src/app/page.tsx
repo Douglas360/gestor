@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useGestor } from "@/context/GestorContext";
 import { Task } from "@/lib/types";
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   const [mounted, setMounted] = useState(false);
-  
+
   const {
     tasks,
     getOperador,
@@ -17,7 +20,6 @@ export default function DashboardPage() {
     selectedTask,
     toggleConcluida,
     changeStatus,
-    openNewTaskModal,
     updateTask,
     toggleSubtarefa,
   } = useGestor();
@@ -25,6 +27,14 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // allow navigation back from /tarefas/nova selecting the created task
+  useEffect(() => {
+    if (!mounted) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('selected');
+    if (id) selectTask(id);
+  }, [mounted, selectTask]);
 
   // Grouping tasks roughly by "hoje", "amanha", "proximos" (for UI sake)
   // To avoid hydration mismatch, we depend on these computations only when mounted
@@ -128,7 +138,7 @@ export default function DashboardPage() {
                   Todas as tarefas
                 </h2>
                 <button
-                  onClick={openNewTaskModal}
+                  onClick={() => router.push('/tarefas/nova')}
                   className="bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm tracking-tight transition-transform active:scale-95 flex items-center gap-2 shadow-lg"
                 >
                   <span className="material-symbols-outlined text-sm">add</span>
@@ -196,7 +206,7 @@ export default function DashboardPage() {
             <div className="max-w-4xl mx-auto flex items-center gap-4 bg-surface-container-highest p-1.5 rounded-2xl shadow-2xl border border-outline-variant/10 pointer-events-auto">
               <span className="material-symbols-outlined text-primary ml-4">add_circle</span>
               <button
-                onClick={openNewTaskModal}
+                onClick={() => router.push('/tarefas/nova')}
                 className="flex-1 text-left bg-transparent border-none text-secondary/50 py-3 outline-none hover:text-secondary transition-colors"
               >
                 Escreva uma nova tarefa...
