@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import * as api from "@/lib/api";
 
 type NavItem = {
   icon: string;
@@ -14,11 +16,31 @@ const navItems: NavItem[] = [
   { icon: "calendar_month", label: "Próximos 7 dias", href: "/calendario" },
   { icon: "task", label: "Todas as tarefas", href: "/" },
   { icon: "group", label: "Equipe", href: "/equipe" },
-  { icon: "format_list_bulleted", label: "Listas", href: "/listas" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [tenantName, setTenantName] = useState<string>("Gestor");
+  const [adminPhone, setAdminPhone] = useState<string | null>(null);
+
+  const initials = useMemo(() => {
+    const parts = tenantName.trim().split(/\s+/).filter(Boolean);
+    const a = parts[0]?.[0] || "G";
+    const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : "";
+    return (a + b).toUpperCase();
+  }, [tenantName]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await api.getTenantSettings();
+        setTenantName(s?.name || "Gestor");
+        setAdminPhone(s?.admin_wa_phone || null);
+      } catch {
+        // ignore (e.g. not logged yet)
+      }
+    })();
+  }, []);
 
   return (
     <aside className="h-screen w-64 flex flex-col fixed left-0 top-0 bg-[#131313] font-inter antialiased tracking-tight text-sm py-6 space-y-4 z-50">
@@ -26,11 +48,13 @@ export default function Sidebar() {
       <div className="px-6 mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-lg">
-            G
+            {initials}
           </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-bold text-[#e5e5e5]">Gestor Editorial</span>
-            <span className="text-xs text-[#e5e5e5]/40 tracking-wider">@gestao_editorial</span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-lg font-bold text-[#e5e5e5] truncate">{tenantName}</span>
+            <span className="text-xs text-[#e5e5e5]/40 tracking-wider truncate">
+              {adminPhone ? `Alertas: ${adminPhone}` : "Configurar alertas em Configurações"}
+            </span>
           </div>
         </div>
       </div>
@@ -65,13 +89,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Nova Lista Button */}
-      <div className="px-5">
-        <button className="w-full bg-primary-container text-on-primary-container py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-          <span className="material-symbols-outlined text-lg">add</span>
-          Nova Lista
-        </button>
-      </div>
+      {/* Listas removidas no MVP */}
 
       {/* Footer */}
       <div className="pt-4 border-t border-outline-variant/10 space-y-1">
