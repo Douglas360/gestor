@@ -4,7 +4,8 @@ import { AnyRequest, TenantAuthGuard } from '../auth/tenant-auth.guard.js';
 import { BossService } from '../boss/boss.service.js';
 
 function scheduleKey(alertId: string) {
-  return `tenant_alert:${alertId}`;
+  // pg-boss key allows: alphanumeric, underscore, hyphen, period, forward slash
+  return `tenant_alert/${alertId}`;
 }
 
 @UseGuards(TenantAuthGuard)

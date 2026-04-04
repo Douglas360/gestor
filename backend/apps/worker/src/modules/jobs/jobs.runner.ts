@@ -147,6 +147,30 @@ export class JobsRunner implements OnModuleInit {
       }
     }
 
+    // Ensure schedules exist for enabled alerts (in case API scheduled before queue existed)
+    try {
+      const { data: alerts } = await this.supabase.client
+        .from('tenant_alerts')
+        .select('id, tenant_id, cron, timezone, enabled')
+        .eq('enabled', true)
+        .limit(200);
+
+      for (const a of alerts || []) {
+        try {
+          await this.boss.client.schedule(
+            'alerts.check_and_notify',
+            (a as any).cron,
+            { tenantId: (a as any).tenant_id, alertId: (a as any).id },
+            { tz: (a as any).timezone || 'America/Sao_Paulo', key: `tenant_alert/${(a as any).id}` }
+          );
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     await this.boss.client.work(
       'wa.inbound.process',
       { batchSize: 1, localConcurrency: 4 },
@@ -455,14 +479,28 @@ export class JobsRunner implements OnModuleInit {
 
         if (!alert?.enabled) continue;
 
+        // Destination: prefer admin_wa_phone, fallback to instance ownerJid
         const { data: ten } = await this.supabase.client.from('tenants').select('admin_wa_phone').eq('id', tenantId).maybeSingle();
-        const admin = String((ten as any)?.admin_wa_phone || '').trim();
-        if (!admin) continue; // nothing to send to
+        let admin = String((ten as any)?.admin_wa_phone || '').trim();
+
+        if (!admin) {
+          // fallback to ownerJid of any open instance
+          const instName = await this.pickAnyOpenInstanceName(tenantId);
+          if (!instName) continue;
+          const ownerJid = await this.evolution.getOwnerJid(instName);
+          if (!ownerJid) continue;
+          const digits = String(ownerJid).replace(/\D+/g, '');
+          admin = digits ? `+${digits}` : ownerJid;
+        }
+
+        // normalize to +digits when possible
+        const digits2 = String(admin).replace(/\D+/g, '');
+        const toNumber = digits2 ? `+${digits2}` : admin;
 
         const statuses = Array.isArray((alert as any)?.statuses) ? (alert as any).statuses : [];
 
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+        const tz = String((alert as any)?.timezone || 'UTC');
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
 
         // Query tasks according to date_mode
         let q = this.supabase.client
@@ -483,7 +521,18 @@ export class JobsRunner implements OnModuleInit {
 
         const { data: tasks } = await q.order('due_date', { ascending: true }).limit(10);
         const list = (tasks || []) as any[];
-        if (!list.length) continue; // user requested: do not send if none
+
+        // No message when empty (product rule)
+        if (!list.length) {
+          await this.supabase.client.from('wa_messages').insert({
+            tenant_id: tenantId,
+            direction: 'out',
+            message_type: 'admin_alert_check',
+            text: null,
+            payload: { kind: 'alert.checked', alertId, mode: (alert as any).date_mode, count: 0, today: todayStr }
+          });
+          continue;
+        }
 
         const fmt = (d: any) => {
           if (!d) return '';
@@ -506,16 +555,19 @@ export class JobsRunner implements OnModuleInit {
         const instName = (job.data as any)?.instanceName || (await this.pickAnyOpenInstanceName(tenantId));
         if (!instName) continue;
 
-        await this.evolution.sendText(instName, {
-          to: admin,
-          text: [header, ...lines].join('\n')
+        const textToSend = [header, ...lines].join('\n');
+        const evo = await this.evolution.sendText(instName, {
+          to: toNumber,
+          text: textToSend
         });
 
-        await this.supabase.client.from('task_events').insert({
+        await this.supabase.client.from('wa_messages').insert({
           tenant_id: tenantId,
-          task_id: null,
-          kind: 'alert.sent',
-          data: { alertId, mode: (alert as any).date_mode, count: list.length }
+          direction: 'out',
+          message_type: 'admin_alert',
+          provider_message_id: (evo as any)?.key?.id || (evo as any)?.messageId || null,
+          text: textToSend,
+          payload: { evo, alertId, mode: (alert as any).date_mode, count: list.length }
         });
       }
     });

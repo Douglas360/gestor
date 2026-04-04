@@ -20,6 +20,22 @@ export class BossService implements OnModuleInit, OnModuleDestroy {
     });
 
     await this.boss.start();
+
+    // Ensure queues exist (required for schedules; schedule table has FK to queue)
+    const queues = [
+      'wa.inbound.process',
+      'wa.outbound.send',
+      'brain.decide_and_act',
+      'alerts.check_and_notify'
+    ];
+
+    for (const q of queues) {
+      try {
+        await this.boss.createQueue(q);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   async onModuleDestroy() {
