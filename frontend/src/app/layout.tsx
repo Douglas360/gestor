@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Gestor Editorial | Painel de Controle",
+  title: "Gestor AI | Painel de Controle",
   description:
     "Plataforma de gestão de tarefas editorial com integração WhatsApp. Gerencie sua equipe e tarefas de forma eficiente.",
 };
