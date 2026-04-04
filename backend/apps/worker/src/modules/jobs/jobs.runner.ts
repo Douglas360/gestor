@@ -12,6 +12,27 @@ export class JobsRunner implements OnModuleInit {
     private readonly evolution: EvolutionService
   ) {}
 
+  private async pickAnyOpenInstanceName(tenantId: string): Promise<string | null> {
+    const { data: insts } = await this.supabase.client
+      .from('wa_instances')
+      .select('instance_name')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    for (const inst of insts || []) {
+      try {
+        const st = await this.evolution.getStatus(inst.instance_name);
+        const state = String(st?.instance?.state || st?.state || '').toLowerCase();
+        if (state === 'open' || state === 'connected') return inst.instance_name;
+      } catch {
+        // ignore
+      }
+    }
+
+    return insts?.[0]?.instance_name || null;
+  }
+
   async onModuleInit() {
     const fmtDate = (d: any) => {
       if (!d) return null;
@@ -117,7 +138,7 @@ export class JobsRunner implements OnModuleInit {
       });
     };
     // Ensure queues exist before starting workers
-    const queues = ['wa.inbound.process', 'wa.outbound.send', 'brain.decide_and_act', 'wa.media.download', 'wa.audio.transcribe', 'sla.tick', 'realtime.publish'];
+    const queues = ['wa.inbound.process', 'wa.outbound.send', 'brain.decide_and_act', 'alerts.check_and_notify', 'wa.media.download', 'wa.audio.transcribe', 'sla.tick', 'realtime.publish'];
     for (const name of queues) {
       try {
         await this.boss.client.createQueue(name);
@@ -419,6 +440,86 @@ export class JobsRunner implements OnModuleInit {
       }
     });
 
+    await this.boss.client.work('alerts.check_and_notify', { batchSize: 1, localConcurrency: 1 }, async (jobs: Job[]) => {
+      for (const job of jobs) {
+        const { tenantId, alertId } = (job.data as any) || {};
+        if (!tenantId || !alertId) continue;
+
+        // load alert + tenant
+        const { data: alert } = await this.supabase.client
+          .from('tenant_alerts')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('id', alertId)
+          .maybeSingle();
+
+        if (!alert?.enabled) continue;
+
+        const { data: ten } = await this.supabase.client.from('tenants').select('admin_wa_phone').eq('id', tenantId).maybeSingle();
+        const admin = String((ten as any)?.admin_wa_phone || '').trim();
+        if (!admin) continue; // nothing to send to
+
+        const statuses = Array.isArray((alert as any)?.statuses) ? (alert as any).statuses : [];
+
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+
+        // Query tasks according to date_mode
+        let q = this.supabase.client
+          .from('tasks')
+          .select('id, title, status, due_date, priority')
+          .eq('tenant_id', tenantId)
+          .not('due_date', 'is', null);
+
+        if (statuses.length) {
+          q = q.in('status', statuses);
+        }
+
+        if ((alert as any).date_mode === 'overdue') {
+          q = q.lt('due_date', todayStr);
+        } else {
+          q = q.eq('due_date', todayStr);
+        }
+
+        const { data: tasks } = await q.order('due_date', { ascending: true }).limit(10);
+        const list = (tasks || []) as any[];
+        if (!list.length) continue; // user requested: do not send if none
+
+        const fmt = (d: any) => {
+          if (!d) return '';
+          const s = String(d);
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+        };
+        const shortId = (id: string) => String(id).split('-')[0];
+
+        const header =
+          (alert as any).date_mode === 'overdue'
+            ? `⏰ *Tarefas atrasadas* (${list.length})`
+            : `📅 *Tarefas vencendo hoje* (${list.length})`;
+
+        const lines = list.map((t) => {
+          const due = fmt(t.due_date);
+          return `• ${t.title} (${shortId(t.id)})${due ? ` — ${due}` : ''}`;
+        });
+
+        const instName = (job.data as any)?.instanceName || (await this.pickAnyOpenInstanceName(tenantId));
+        if (!instName) continue;
+
+        await this.evolution.sendText(instName, {
+          to: admin,
+          text: [header, ...lines].join('\n')
+        });
+
+        await this.supabase.client.from('task_events').insert({
+          tenant_id: tenantId,
+          task_id: null,
+          kind: 'alert.sent',
+          data: { alertId, mode: (alert as any).date_mode, count: list.length }
+        });
+      }
+    });
+
     await this.boss.client.work('brain.decide_and_act', { batchSize: 1, localConcurrency: 2 }, async (jobs: Job[]) => {
       for (const job of jobs) {
         const { tenantId, instanceName, selectedButtonId, from, text, replyToProviderMessageId } = (job.data as any) || {};
@@ -648,8 +749,113 @@ export class JobsRunner implements OnModuleInit {
           continue;
         }
 
-        // Decide action by keywords
         const lower = msg.toLowerCase();
+
+        // 2.5) Operator can ask for their task list (open / in progress / overdue)
+        const wantsList = /(minhas\s+tarefas|listar\s+tarefas|lista\s+de\s+tarefas|tarefas\s+abertas|tarefas\s+em\s+andamento|tarefas\s+atrasadas|pendentes|abertas|atrasadas|em\s+andamento)/.test(lower);
+        if (wantsList && replyInstanceName && from) {
+          const toDigits = String(from).replace(/\D+/g, '');
+          const toNumber = toDigits ? `+${toDigits}` : String(from);
+
+          const isOverdueReq = /(atrasad)/.test(lower);
+          const isInProgressReq = /(andamento|em\s+andamento|fazendo|executando)/.test(lower);
+          const isOpenReq = /(abertas|pendentes|abertas|criad)/.test(lower);
+
+          const needAll = /(todas|minhas\s+tarefas)/.test(lower) || (!isOverdueReq && !isInProgressReq && !isOpenReq);
+
+          const statusesOpen = ['created', 'awaiting_evidence'];
+          const statusesInProgress = ['in_progress'];
+
+          const today = new Date();
+          const yyyy = today.getUTCFullYear();
+          const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
+          const dd = String(today.getUTCDate()).padStart(2, '0');
+          const todayStr = `${yyyy}-${mm}-${dd}`;
+
+          const fetchTasks = async (statuses: string[]) => {
+            let q = this.supabase.client
+              .from('tasks')
+              .select('id, title, status, due_date, priority')
+              .eq('tenant_id', tenantId)
+              .eq('operator_id', operator?.id || '')
+              .in('status', statuses)
+              .order('due_date', { ascending: true, nullsFirst: false })
+              .order('created_at', { ascending: false })
+              .limit(10);
+
+            const { data } = await q;
+            return (data || []) as any[];
+          };
+
+          // overdue: due_date < today and not completed
+          const fetchOverdue = async () => {
+            const { data } = await this.supabase.client
+              .from('tasks')
+              .select('id, title, status, due_date, priority')
+              .eq('tenant_id', tenantId)
+              .eq('operator_id', operator?.id || '')
+              .not('status', 'eq', 'completed')
+              .not('due_date', 'is', null)
+              .lt('due_date', todayStr)
+              .order('due_date', { ascending: true })
+              .limit(10);
+            return (data || []) as any[];
+          };
+
+          const fmtDate = (d: any) => {
+            if (!d) return null;
+            const s = String(d);
+            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return `${m[3]}/${m[2]}`;
+            return s;
+          };
+
+          const shortId = (id: string) => String(id).split('-')[0];
+          const render = (t: any) => {
+            const due = fmtDate(t.due_date);
+            const dueTxt = due ? `🗓 ${due}` : '';
+            return `• ${t.title} (${shortId(t.id)}) ${dueTxt}`.trim();
+          };
+
+          const sections: string[] = [];
+          try {
+            if (needAll || isOpenReq) {
+              const open = await fetchTasks(statusesOpen);
+              sections.push(`📋 *Abertas* (${open.length})`);
+              sections.push(open.length ? open.map(render).join('\n') : '• Nenhuma');
+              sections.push('');
+            }
+            if (needAll || isInProgressReq) {
+              const prog = await fetchTasks(statusesInProgress);
+              sections.push(`🏃 *Em andamento* (${prog.length})`);
+              sections.push(prog.length ? prog.map(render).join('\n') : '• Nenhuma');
+              sections.push('');
+            }
+            if (needAll || isOverdueReq) {
+              const od = await fetchOverdue();
+              sections.push(`⏰ *Atrasadas* (${od.length})`);
+              sections.push(od.length ? od.map(render).join('\n') : '• Nenhuma');
+              sections.push('');
+            }
+
+            sections.push('Responda com: *iniciar* | *foto* | *concluir* (ou *feito*)');
+
+            await this.evolution.sendText(replyInstanceName, { to: toNumber, text: sections.join('\n') });
+
+            await this.supabase.client.from('task_events').insert({
+              tenant_id: tenantId,
+              task_id: taskId,
+              kind: 'wa.tasks.listed',
+              data: { from, operatorId: operator?.id || null, text: msg }
+            });
+          } catch {
+            // ignore
+          }
+
+          continue;
+        }
+
+        // Decide action by keywords
         const action =
           /(conclu[ií]|finaliz|feito|pronto|completei|concluido)/.test(lower)
             ? 'finish'

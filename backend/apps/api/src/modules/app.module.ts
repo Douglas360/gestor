@@ -8,6 +8,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
 import { TasksModule } from './tasks/tasks.module.js';
 import { OperatorsModule } from './operators/operators.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
+import { AlertsModule } from './alerts/alerts.module.js';
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { TenantsModule } from './tenants/tenants.module.js';
     WebhooksModule,
     TasksModule,
     OperatorsModule,
-    TenantsModule
+    TenantsModule,
+    AlertsModule
   ]
 })
 export class AppModule {}

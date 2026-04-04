@@ -191,6 +191,41 @@ export async function updateTenantSettings(patch: Partial<{ admin_wa_phone: stri
   });
 }
 
+// Alerts
+export type ApiTenantAlert = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  date_mode: 'overdue' | 'due_today';
+  statuses: string[];
+  cron: string;
+  timezone: string;
+  enabled: boolean;
+  last_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listAlerts() {
+  const tenantId = requireTenantId();
+  return apiFetch<{ data: ApiTenantAlert[] }>(`/v1/tenants/${tenantId}/alerts`);
+}
+
+export async function createAlert(input: Partial<ApiTenantAlert> & { name: string; date_mode: 'overdue' | 'due_today'; statuses: string[]; cron: string; timezone?: string; enabled?: boolean }) {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTenantAlert>(`/v1/tenants/${tenantId}/alerts`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function updateAlert(alertId: string, patch: Partial<ApiTenantAlert>) {
+  const tenantId = requireTenantId();
+  return apiFetch<ApiTenantAlert>(`/v1/tenants/${tenantId}/alerts/${alertId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function deleteAlert(alertId: string) {
+  const tenantId = requireTenantId();
+  return apiFetch<{ ok: true }>(`/v1/tenants/${tenantId}/alerts/${alertId}`, { method: 'DELETE' });
+}
+
 // WhatsApp Instances
 export type ApiWaInstance = {
   id: string;

@@ -54,6 +54,13 @@ export default function ConfiguracoesPage() {
   const [adminPhone, setAdminPhone] = useState<string>('');
   const [isSavingAdminPhone, setIsSavingAdminPhone] = useState(false);
 
+  const [alerts, setAlerts] = useState<api.ApiTenantAlert[]>([]);
+  const [alertName, setAlertName] = useState('Alerta diário');
+  const [alertMode, setAlertMode] = useState<'overdue' | 'due_today'>('overdue');
+  const [alertTime, setAlertTime] = useState('09:00');
+  const [alertStatuses, setAlertStatuses] = useState<string[]>(['created', 'in_progress', 'awaiting_evidence']);
+  const [isSavingAlert, setIsSavingAlert] = useState(false);
+
   const activeInstance = useMemo(
     () => instances.find((i) => i.id === activeInstanceId) || instances[0] || null,
     [instances, activeInstanceId]
@@ -69,6 +76,11 @@ export default function ConfiguracoesPage() {
     setAdminPhone(s.admin_wa_phone || '');
   }
 
+  async function reloadAlerts() {
+    const res = await api.listAlerts();
+    setAlerts(res.data || []);
+  }
+
   async function saveAdminPhone() {
     setIsSavingAdminPhone(true);
     setError(null);
@@ -79,6 +91,48 @@ export default function ConfiguracoesPage() {
       setError(e?.message || String(e));
     } finally {
       setIsSavingAdminPhone(false);
+    }
+  }
+
+  async function handleCreateAlert() {
+    setIsSavingAlert(true);
+    setError(null);
+    try {
+      const [hh, mm] = alertTime.split(':');
+      const cron = `${Number(mm || 0)} ${Number(hh || 9)} * * *`;
+      await api.createAlert({
+        name: alertName,
+        date_mode: alertMode,
+        statuses: alertStatuses,
+        cron,
+        timezone: 'America/Sao_Paulo',
+        enabled: true
+      });
+      await reloadAlerts();
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setIsSavingAlert(false);
+    }
+  }
+
+  async function toggleAlertEnabled(a: api.ApiTenantAlert, enabled: boolean) {
+    setAlerts((prev) => prev.map((x) => (x.id === a.id ? { ...x, enabled } : x)));
+    try {
+      await api.updateAlert(a.id, { enabled });
+    } catch (e: any) {
+      setError(e?.message || String(e));
+      await reloadAlerts();
+    }
+  }
+
+  async function deleteAlert(a: api.ApiTenantAlert) {
+    if (!confirm(`Excluir o alerta "${a.name}"?`)) return;
+    try {
+      await api.deleteAlert(a.id);
+      await reloadAlerts();
+    } catch (e: any) {
+      setError(e?.message || String(e));
     }
   }
 
@@ -155,6 +209,7 @@ export default function ConfiguracoesPage() {
       try {
         await reloadInstances();
         await reloadTenantSettings();
+        await reloadAlerts();
       } catch (e: any) {
         setError(e?.message || String(e));
       }
@@ -218,6 +273,127 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
             </div>
+
+            <div className="mb-6 bg-surface-container-highest/30 border border-outline-variant/10 rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-[11px] font-bold text-secondary uppercase tracking-widest">Alertas (WhatsApp)</div>
+                  <div className="text-sm font-bold text-on-surface">Notificações automáticas por status + vencimento</div>
+                  <p className="text-xs text-secondary mt-1">
+                    Exemplo: todo dia 09:00, se existir tarefa atrasada com status selecionado, envia alerta no WhatsApp administrativo.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Nome</label>
+                  <input
+                    value={alertName}
+                    onChange={(e) => setAlertName(e.target.value)}
+                    className="w-full bg-surface-container-highest p-3 rounded-xl text-sm font-medium text-on-surface outline-none border border-outline-variant/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Horário (diário)</label>
+                  <input
+                    type="time"
+                    value={alertTime}
+                    onChange={(e) => setAlertTime(e.target.value)}
+                    className="w-full bg-surface-container-highest p-3 rounded-xl text-sm font-medium text-on-surface outline-none border border-outline-variant/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Tipo</label>
+                  <select
+                    value={alertMode}
+                    onChange={(e) => setAlertMode(e.target.value as any)}
+                    className="w-full bg-surface-container-highest p-3 rounded-xl text-sm font-medium text-on-surface outline-none border border-outline-variant/10"
+                  >
+                    <option value="overdue">Tarefas atrasadas</option>
+                    <option value="due_today">Tarefas vencendo hoje</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Status monitorados</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { k: 'created', label: 'Abertas' },
+                      { k: 'in_progress', label: 'Em andamento' },
+                      { k: 'awaiting_evidence', label: 'Aguard. evidência' }
+                    ].map((s) => {
+                      const active = alertStatuses.includes(s.k);
+                      return (
+                        <button
+                          key={s.k}
+                          type="button"
+                          onClick={() => {
+                            setAlertStatuses((prev) => (active ? prev.filter((x) => x !== s.k) : [...prev, s.k]));
+                          }}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                            active
+                              ? 'bg-primary/15 border-primary/30 text-on-surface'
+                              : 'bg-transparent border-outline-variant/10 text-secondary hover:text-on-surface'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
+                <div className="text-xs text-secondary">
+                  Não envia nada se não houver tarefas. (conforme regra do produto)
+                </div>
+                <button
+                  onClick={handleCreateAlert}
+                  disabled={isSavingAlert || alertStatuses.length === 0}
+                  className="px-4 py-3 rounded-xl font-bold text-sm bg-primary text-on-primary disabled:opacity-50"
+                >
+                  {isSavingAlert ? 'Criando…' : 'Criar alerta'}
+                </button>
+              </div>
+
+              <div className="mt-4">
+                {alerts.length === 0 ? (
+                  <div className="text-sm text-secondary">Nenhum alerta configurado ainda.</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {alerts.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between gap-3 bg-surface-container-highest/30 border border-outline-variant/10 rounded-2xl p-4">
+                        <div className="min-w-0">
+                          <div className="font-bold text-on-surface truncate">{a.name}</div>
+                          <div className="text-xs text-secondary truncate">
+                            {a.date_mode === 'overdue' ? 'Atrasadas' : 'Vencendo hoje'} • cron: {a.cron} • status: {(a.statuses || []).join(', ')}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleAlertEnabled(a, !a.enabled)}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border ${a.enabled ? 'bg-primary/15 border-primary/30 text-on-surface' : 'bg-transparent border-outline-variant/10 text-secondary'}`}
+                          >
+                            {a.enabled ? 'Ativo' : 'Inativo'}
+                          </button>
+                          <button
+                            onClick={() => deleteAlert(a)}
+                            className="px-3 py-2 rounded-xl text-xs font-bold border bg-error-container/30 border-error/20 text-error"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
