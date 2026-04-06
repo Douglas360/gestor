@@ -340,8 +340,9 @@ export class JobsRunner implements OnModuleInit {
           .select('id, title, description, status, operator_id, priority, due_date, tags')
           .eq('tenant_id', tenantId)
           .eq('id', taskId)
-          .single();
+          .maybeSingle();
         if (taskErr) throw new Error(taskErr.message);
+        if (!task?.id) throw new Error('Task not found');
 
         const opId = operatorId || task.operator_id;
         if (!opId) throw new Error('Task has no operator');
@@ -351,8 +352,9 @@ export class JobsRunner implements OnModuleInit {
           .select('id, wa_phone, name')
           .eq('tenant_id', tenantId)
           .eq('id', opId)
-          .single();
+          .maybeSingle();
         if (opErr) throw new Error(opErr.message);
+        if (!op?.id) throw new Error('Operator not found');
 
         // Buttons payload
         const btn = (action: string) => `task:${task.id}|action:${action}`;
@@ -397,10 +399,35 @@ export class JobsRunner implements OnModuleInit {
           .filter(Boolean)
           .join('\n');
 
-        const textResp = await this.evolution.sendText(instName, {
-          to: op.wa_phone,
-          text: fallbackText
-        });
+        let textResp: any = null;
+        try {
+          textResp = await this.evolution.sendText(instName, {
+            to: op.wa_phone,
+            text: fallbackText
+          });
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          // transient Evolution/Baileys failure
+          if (msg.toLowerCase().includes('connection closed')) {
+            const attempts = Number((job.data as any)?.attempts || 0) + 1;
+            if (attempts <= 20) {
+              await this.boss.client.send(
+                'wa.outbound.send',
+                { ...(job.data as any), attempts },
+                { startAfter: new Date(Date.now() + 60_000) }
+              );
+            }
+
+            await this.supabase.client.from('task_events').insert({
+              tenant_id: tenantId,
+              task_id: task.id,
+              kind: 'wa.notify.deferred',
+              data: { reason: 'connection_closed', attempts }
+            });
+            continue;
+          }
+          throw e;
+        }
 
         // Store fallback message too, so threaded replies can map back to the correct task
         await this.supabase.client.from('wa_messages').insert({
@@ -414,9 +441,11 @@ export class JobsRunner implements OnModuleInit {
           payload: textResp
         });
 
-        const evoResp = await this.evolution.sendButtons(instName, {
-          to: op.wa_phone,
-          title: '🆕 Nova tarefa',
+        let evoResp: any = null;
+        try {
+          evoResp = await this.evolution.sendButtons(instName, {
+            to: op.wa_phone,
+            title: '🆕 Nova tarefa',
           body: [
             `📌 ${task.title}`,
             task.description ? `📝 ${task.description}` : null,
@@ -436,17 +465,22 @@ export class JobsRunner implements OnModuleInit {
             { id: btn('finish'), text: '✅ Concluir' }
           ]
         });
+        } catch {
+          // Buttons are best-effort; fallback text was already sent.
+        }
 
-        await this.supabase.client.from('wa_messages').insert({
-          tenant_id: tenantId,
-          task_id: task.id,
-          operator_id: op.id,
-          direction: 'out',
-          provider_message_id: evoResp?.key?.id || evoResp?.messageId || null,
-          message_type: 'interactive',
-          text: null,
-          payload: evoResp
-        });
+        if (evoResp) {
+          await this.supabase.client.from('wa_messages').insert({
+            tenant_id: tenantId,
+            task_id: task.id,
+            operator_id: op.id,
+            direction: 'out',
+            provider_message_id: evoResp?.key?.id || evoResp?.messageId || null,
+            message_type: 'interactive',
+            text: null,
+            payload: evoResp
+          });
+        }
 
         await this.supabase.client.from('task_events').insert({
           tenant_id: tenantId,
@@ -740,6 +774,27 @@ export class JobsRunner implements OnModuleInit {
         if (!operator) operator = findByTail(11);
         if (!operator) operator = findByTail(9);
         if (!operator) operator = findByTail(8);
+
+        // Auto-heal operator wa_phone when we observe a different valid sender number.
+        // This prevents outbound notifications from failing when the stored number is wrong.
+        if (operator?.id) {
+          const observedDigits = sender;
+          if (observedDigits && observedDigits.length >= 10) {
+            const observed = `+${observedDigits}`;
+            const storedDigits = norm(operator.wa_phone);
+            if (storedDigits && storedDigits !== observedDigits) {
+              try {
+                await this.supabase.client
+                  .from('operators')
+                  .update({ wa_phone: observed })
+                  .eq('tenant_id', tenantId)
+                  .eq('id', operator.id);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
 
 
         // Resolve task id priority:
