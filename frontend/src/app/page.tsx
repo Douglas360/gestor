@@ -18,6 +18,9 @@ export default function DashboardPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [activities, setActivities] = useState<import("@/lib/types").TaskActivity[]>([]);
 
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
+
   const {
     tasks,
     getOperador,
@@ -28,6 +31,7 @@ export default function DashboardPage() {
     changeStatus,
     updateTask,
     deleteTask,
+    notifyTask,
     toggleSubtarefa,
     reloadAll,
   } = useGestor();
@@ -345,6 +349,27 @@ export default function DashboardPage() {
                   {getStatusMeta(selectedTask.status).label}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!selectedTask) return;
+                      setNotifyBusy(true);
+                      setNotifyError(null);
+                      try {
+                        await notifyTask(selectedTask.id);
+                        alert('Notificação reenviada (job enfileirado).');
+                      } catch (e: any) {
+                        setNotifyError(e?.message || String(e));
+                        alert(`Falha ao reenviar notificação: ${e?.message || String(e)}`);
+                      } finally {
+                        setNotifyBusy(false);
+                      }
+                    }}
+                    disabled={notifyBusy}
+                    className="material-symbols-outlined text-secondary hover:text-on-surface transition-colors disabled:opacity-50"
+                    title="Reenviar notificação no WhatsApp"
+                  >
+                    notifications
+                  </button>
                   <button
                     onClick={() => {
                       if (!selectedTask) return;
