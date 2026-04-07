@@ -147,10 +147,10 @@ export class WhatsAppInstancesController {
       evolution = { ok: false, error: e?.message || String(e) };
     }
 
-    // Soft-delete in DB to keep tenant resolution for late webhooks
+    // Hard-delete in DB (requested). Note: late webhooks from this instance may no longer resolve tenant.
     const { error: delErr } = await sb
       .from('wa_instances')
-      .update({ status: 'deleted' })
+      .delete()
       .eq('tenant_id', tenantId)
       .eq('id', instanceId);
     if (delErr) throw new Error(delErr.message);
