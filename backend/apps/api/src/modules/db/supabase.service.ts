@@ -56,6 +56,10 @@ export class SupabaseService {
     });
   }
 
+  clientForRequestAccessToken(accessToken?: string | null): SupabaseClient {
+    return accessToken ? this.clientForAccessToken(accessToken) : this.client;
+  }
+
   async getUserFromAccessToken(accessToken: string) {
     if (!this.anonClient) {
       throw new Error('SUPABASE_ANON_KEY is required when AUTH_ENABLED=true');
@@ -66,4 +70,3 @@ export class SupabaseService {
     return data.user;
   }
 }
-

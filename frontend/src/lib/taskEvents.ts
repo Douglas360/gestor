@@ -58,7 +58,8 @@ export function mapTaskEventToActivity(evt: ApiTaskEvent): TaskActivity {
     description = nextStatus ? `Status alterado para ${apiStatusToLabel(String(nextStatus))}` : 'Status alterado';
   }
 
-  const actor = evt.actor_operator_id || evt.data?.operatorId || evt.data?.operator_id || undefined;
+  const actorCandidate = evt.actor_operator_id || evt.data?.operatorId || evt.data?.operator_id;
+  const actor = typeof actorCandidate === 'string' ? actorCandidate : undefined;
 
   return {
     id: evt.id,

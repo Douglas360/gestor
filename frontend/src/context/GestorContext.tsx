@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { usePathname } from "next/navigation";
 import { Task, Operador, Status, Priority, Subtarefa } from "@/lib/types";
 import * as api from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -112,8 +113,8 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
       setTasks(mappedTasks);
 
       if (!selectedTaskId && mappedTasks.length > 0) setSelectedTaskId(mappedTasks[0]!.id);
-    } catch (e: any) {
-      setLastError(e?.message || String(e));
+    } catch (e: unknown) {
+      setLastError(getErrorMessage(e));
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +141,7 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
 
   const createOperador = useCallback(async (input: NewOperadorInput): Promise<Operador> => {
     const { mapApiOperator } = await import("@/lib/mappers");
-    const created: any = await api.createOperator({
+    const created = await api.createOperator({
       name: input.nome,
       wa_phone: input.whatsapp,
       active: true,
@@ -157,14 +158,16 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
   const updateOperador = useCallback(async (id: string, patch: Partial<Operador>) => {
     setOperadores((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
 
-    await api.updateOperator(id, {
+    const operatorPatch: api.UpdateOperatorInput = {
       name: patch.nome,
       wa_phone: patch.whatsapp,
       active: patch.status ? patch.status === "ativo" : undefined,
       email: patch.email ?? undefined,
       role: patch.cargo ?? undefined,
       avatar_url: patch.avatar ?? undefined,
-    } as any);
+    };
+
+    await api.updateOperator(id, operatorPatch);
   }, []);
 
   const deleteOperador = useCallback(async (id: string) => {
@@ -197,7 +200,7 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
     const { mapStatusToApi } = await import("@/lib/mappers");
-    await api.updateTask(id, {
+    const taskPatch: api.UpdateTaskInput = {
       title: patch.titulo,
       description: patch.descricao ?? undefined,
       status: patch.status ? mapStatusToApi(patch.status) : undefined,
@@ -207,7 +210,9 @@ export function GestorProvider({ children }: { children: React.ReactNode }) {
       tags: patch.tags ?? undefined,
       subtasks: patch.subtarefas ?? undefined,
       reminder: patch.lembrete ?? undefined,
-    } as any);
+    };
+
+    await api.updateTask(id, taskPatch);
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {

@@ -1,4 +1,4 @@
-import type { Operador, Task, Status } from './types';
+import type { Operador, Priority, Task, Status } from './types';
 import type { ApiOperator, ApiTask } from './api';
 
 export function initialsFromName(name: string) {
@@ -36,7 +36,7 @@ export function mapStatusFromApi(status: string): Status {
   }
 }
 
-export function mapStatusToApi(status: Status): string {
+export function mapStatusToApi(status: Status): ApiTask['status'] {
   switch (status) {
     case 'concluida':
       return 'completed';
@@ -50,21 +50,33 @@ export function mapStatusToApi(status: Status): string {
   }
 }
 
-export function mapApiTask(t: ApiTask): Task {
-  const status = mapStatusFromApi(t.status);
+function mapPriorityFromApi(priority?: string | null): Priority {
+  switch (priority) {
+    case 'urgente':
+    case 'alta':
+    case 'media':
+    case 'baixa':
+      return priority;
+    default:
+      return 'media';
+  }
+}
+
+export function mapApiTask(task: ApiTask): Task {
+  const status = mapStatusFromApi(task.status);
 
   return {
-    id: t.id,
-    titulo: t.title,
-    descricao: t.description || undefined,
+    id: task.id,
+    titulo: task.title,
+    descricao: task.description || undefined,
     status,
-    prioridade: (t.priority as any) || 'media',
-    dataVencimento: t.due_date || undefined,
-    responsavelId: t.operator_id || undefined,
-    tags: Array.isArray(t.tags) ? t.tags : [],
-    subtarefas: (Array.isArray(t.subtasks) ? t.subtasks : []) as any,
-    lembrete: t.reminder || undefined,
-    criadaEm: t.created_at?.split('T')?.[0] || new Date().toISOString().split('T')[0],
+    prioridade: mapPriorityFromApi(task.priority),
+    dataVencimento: task.due_date || undefined,
+    responsavelId: task.operator_id || undefined,
+    tags: Array.isArray(task.tags) ? task.tags : [],
+    subtarefas: Array.isArray(task.subtasks) ? task.subtasks : [],
+    lembrete: task.reminder || undefined,
+    criadaEm: task.created_at?.split('T')?.[0] || new Date().toISOString().split('T')[0],
     concluida: status === 'concluida',
     activities: []
   };

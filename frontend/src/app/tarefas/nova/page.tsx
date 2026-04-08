@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useGestor } from "@/context/GestorContext";
 import { Priority, Status } from "@/lib/types";
+import { getErrorMessage } from "@/lib/errors";
 import { TAGS_SUGERIDAS } from "@/lib/mockData";
 
 const PRIORITIES: { value: Priority; label: string; color: string; icon: string }[] = [
@@ -72,8 +73,8 @@ export default function NovaTarefaPage() {
 
       // back to list selecting task
       router.push(`/?selected=${created.id}`);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsSubmitting(false);
     }

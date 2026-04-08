@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -53,10 +54,10 @@
   --color-error-dim: #bb5551;
   --color-surface-variant: #262626;
 
-  --font-family-headline: "Inter", sans-serif;
-  --font-family-body: "Inter", sans-serif;
-  --font-family-label: "Inter", sans-serif;
-  --font-family-inter: "Inter", sans-serif;
+  --font-family-headline: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-body: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-label: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-inter: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
   --radius-DEFAULT: 0.25rem;
   --radius-lg: 0.5rem;
@@ -70,7 +71,7 @@
   }
 
   body {
-    font-family: "Inter", sans-serif;
+    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: #0e0e0e;
     color: #e5e5e5;
     -webkit-font-smoothing: antialiased;

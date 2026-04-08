@@ -9,7 +9,7 @@ export class TenantsSettingsController {
 
   @Get()
   async get(@Req() req: AnyRequest, @Param('tenantId') tenantId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
     const { data, error } = await sb.from('tenants').select('id, name, admin_wa_phone').eq('id', tenantId).single();
     if (error) throw new Error(error.message);
     return data;
@@ -17,7 +17,7 @@ export class TenantsSettingsController {
 
   @Patch()
   async update(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const patch: any = {};
     if (body?.admin_wa_phone !== undefined) {

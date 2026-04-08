@@ -4,23 +4,35 @@ import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import * as api from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 
-function extractBase64Qr(qr: any): string | null {
+const ALERT_STATUS_OPTIONS: Array<{ k: api.ApiTaskStatus; label: string }> = [
+  { k: "created", label: "Abertas" },
+  { k: "in_progress", label: "Em andamento" },
+  { k: "awaiting_evidence", label: "Aguard. evidência" },
+];
+
+function asRecord(value: unknown): api.ApiRecord | null {
+  return typeof value === "object" && value !== null ? (value as api.ApiRecord) : null;
+}
+
+function extractBase64Qr(qr: api.ApiQrPayload | null | undefined): string | null {
   if (!qr) return null;
 
-  // try common shapes
+  const qrCode = asRecord(qr.qrcode);
+  const nestedQr = asRecord(qr.qr);
+  const data = asRecord(qr.data);
   const candidates = [
-    qr?.base64,
-    qr?.qrcode,
-    qr?.qrcode?.base64,
-    qr?.qr,
-    qr?.qr?.base64,
-    qr?.data?.base64,
+    qr.base64,
+    typeof qr.qrcode === "string" ? qr.qrcode : null,
+    typeof qrCode?.base64 === "string" ? qrCode.base64 : null,
+    typeof qr.qr === "string" ? qr.qr : null,
+    typeof nestedQr?.base64 === "string" ? nestedQr.base64 : null,
+    typeof data?.base64 === "string" ? data.base64 : null,
   ];
 
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 50) {
-      // sometimes it already comes as data:image/png;base64,...
       if (c.startsWith("data:image")) return c;
       return `data:image/png;base64,${c}`;
     }
@@ -29,7 +41,7 @@ function extractBase64Qr(qr: any): string | null {
   return null;
 }
 
-function humanConnStatus(evolution: any, saved?: string | null) {
+function humanConnStatus(evolution: api.ApiEvolutionPayload | null | undefined, saved?: string | null) {
   const s = (
     evolution?.state ||
     evolution?.status ||
@@ -46,8 +58,8 @@ function humanConnStatus(evolution: any, saved?: string | null) {
 export default function ConfiguracoesPage() {
   const [instances, setInstances] = useState<api.ApiWaInstance[]>([]);
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null);
-  const [status, setStatus] = useState<any>(null);
-  const [qr, setQr] = useState<any>(null);
+  const [status, setStatus] = useState<api.ApiWaStatusResponse | null>(null);
+  const [qr, setQr] = useState<api.ApiWaQrResponse | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,9 +68,9 @@ export default function ConfiguracoesPage() {
 
   const [alerts, setAlerts] = useState<api.ApiTenantAlert[]>([]);
   const [alertName, setAlertName] = useState('Alerta diário');
-  const [alertMode, setAlertMode] = useState<'overdue' | 'due_today'>('overdue');
+  const [alertMode, setAlertMode] = useState<api.ApiAlertDateMode>('overdue');
   const [alertTime, setAlertTime] = useState('09:00');
-  const [alertStatuses, setAlertStatuses] = useState<string[]>(['created', 'in_progress', 'awaiting_evidence']);
+  const [alertStatuses, setAlertStatuses] = useState<api.ApiTaskStatus[]>(['created', 'in_progress', 'awaiting_evidence']);
   const [isSavingAlert, setIsSavingAlert] = useState(false);
 
   const activeInstance = useMemo(
@@ -87,8 +99,8 @@ export default function ConfiguracoesPage() {
     try {
       const saved = await api.updateTenantSettings({ admin_wa_phone: adminPhone || null });
       setAdminPhone(saved.admin_wa_phone || '');
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsSavingAdminPhone(false);
     }
@@ -109,8 +121,8 @@ export default function ConfiguracoesPage() {
         enabled: true
       });
       await reloadAlerts();
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsSavingAlert(false);
     }
@@ -120,8 +132,8 @@ export default function ConfiguracoesPage() {
     setAlerts((prev) => prev.map((x) => (x.id === a.id ? { ...x, enabled } : x)));
     try {
       await api.updateAlert(a.id, { enabled });
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
       await reloadAlerts();
     }
   }
@@ -131,8 +143,8 @@ export default function ConfiguracoesPage() {
     try {
       await api.deleteAlert(a.id);
       await reloadAlerts();
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     }
   }
 
@@ -163,8 +175,8 @@ export default function ConfiguracoesPage() {
       // fetch status + qr
       await refreshStatus(instanceId);
       await refreshQr(instanceId);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsBusy(false);
     }
@@ -178,8 +190,8 @@ export default function ConfiguracoesPage() {
       await reloadInstances();
       await refreshStatus(activeInstance.id);
       await refreshQr(activeInstance.id);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsBusy(false);
     }
@@ -197,8 +209,8 @@ export default function ConfiguracoesPage() {
       setQr(null);
       setStatus(null);
       await reloadInstances();
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setIsBusy(false);
     }
@@ -210,8 +222,8 @@ export default function ConfiguracoesPage() {
         await reloadInstances();
         await reloadTenantSettings();
         await reloadAlerts();
-      } catch (e: any) {
-        setError(e?.message || String(e));
+      } catch (e: unknown) {
+        setError(getErrorMessage(e));
       }
     })();
   }, []);
@@ -306,10 +318,10 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Tipo</label>
+                    <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Tipo</label>
                   <select
                     value={alertMode}
-                    onChange={(e) => setAlertMode(e.target.value as any)}
+                    onChange={(e) => setAlertMode(e.target.value as api.ApiAlertDateMode)}
                     className="w-full bg-surface-container-highest p-3 rounded-xl text-sm font-medium text-on-surface outline-none border border-outline-variant/10"
                   >
                     <option value="overdue">Tarefas atrasadas</option>
@@ -320,11 +332,7 @@ export default function ConfiguracoesPage() {
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold text-secondary uppercase tracking-widest">Status monitorados</label>
                   <div className="flex flex-wrap gap-2">
-                    {[
-                      { k: 'created', label: 'Abertas' },
-                      { k: 'in_progress', label: 'Em andamento' },
-                      { k: 'awaiting_evidence', label: 'Aguard. evidência' }
-                    ].map((s) => {
+                    {ALERT_STATUS_OPTIONS.map((s) => {
                       const active = alertStatuses.includes(s.k);
                       return (
                         <button

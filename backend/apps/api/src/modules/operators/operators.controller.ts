@@ -9,7 +9,7 @@ export class OperatorsController {
 
   @Post()
   async create(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
     const payload = {
       tenant_id: tenantId,
       name: String(body?.name || ''),
@@ -44,7 +44,7 @@ export class OperatorsController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     let q = sb.from('operators').select('*').eq('tenant_id', tenantId);
     if (active === 'true') q = q.eq('active', true);
@@ -60,7 +60,7 @@ export class OperatorsController {
 
   @Get(':operatorId')
   async get(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Param('operatorId') operatorId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data, error } = await sb
       .from('operators')
@@ -80,7 +80,7 @@ export class OperatorsController {
     @Param('operatorId') operatorId: string,
     @Body() body: any
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const patch: any = {};
     if (body?.name !== undefined) patch.name = String(body.name);
@@ -104,7 +104,7 @@ export class OperatorsController {
 
   @Delete(':operatorId')
   async remove(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Param('operatorId') operatorId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { error } = await sb
       .from('operators')

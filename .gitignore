@@ -21,3 +21,7 @@ yarn-error.log*
 
 # workspace
 frontend_old
+
+# accidental root artifacts
+/next-env.d.ts
+/package-lock.json

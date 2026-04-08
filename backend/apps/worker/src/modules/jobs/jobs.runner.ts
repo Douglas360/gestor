@@ -603,6 +603,12 @@ export class JobsRunner implements OnModuleInit {
           text: textToSend,
           payload: { evo, alertId, mode: (alert as any).date_mode, count: list.length }
         });
+
+        await this.supabase.client
+          .from('tenant_alerts')
+          .update({ last_sent_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId)
+          .eq('id', alertId);
       }
     });
 
@@ -828,18 +834,7 @@ export class JobsRunner implements OnModuleInit {
         }
 
         if (!taskId) {
-          // cannot resolve task; log and optionally ask for ID
-          try {
-            await this.supabase.client.from('task_events').insert({
-              tenant_id: tenantId,
-              task_id: null,
-              kind: 'wa.text.unmatched',
-              data: { from, text: msg }
-            });
-          } catch {
-            // ignore
-          }
-
+          // cannot resolve task; the inbound message is already stored in wa_messages
           if (replyInstanceName && from) {
             const toDigits = String(from).replace(/\D+/g, '');
             const toNumber = toDigits ? `+${toDigits}` : String(from);

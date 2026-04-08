@@ -3,6 +3,16 @@ import { BossService } from '../boss/boss.service.js';
 import { SupabaseService } from '../db/supabase.service.js';
 import crypto from 'node:crypto';
 
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord | null {
+  return typeof value === 'object' && value !== null ? (value as JsonRecord) : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
 @Controller('webhooks/whatsapp')
 export class EvolutionWebhookController {
   constructor(
@@ -13,14 +23,20 @@ export class EvolutionWebhookController {
   private async handleEvolutionWebhook(
     webhookSecret: string | undefined,
     tenantHeader: string | undefined,
-    body: any,
+    body: unknown,
     eventName?: string
   ) {
-    // Instance name should come from Evolution payload.
-    const instanceName = body?.instance || body?.instanceName || body?.data?.instance || null;
+    const payload = asRecord(body);
+    const payloadData = asRecord(payload?.data);
+    const payloadKey = asRecord(payloadData?.key);
 
-    // Resolve tenant by instance (authoritative for multi-tenant)
-    let tenantId: string | null = tenantHeader || body?.tenantId || null;
+    const instanceName =
+      asString(payload?.instance) ||
+      asString(payload?.instanceName) ||
+      asString(payloadData?.instance) ||
+      null;
+
+    let tenantId: string | null = tenantHeader || asString(payload?.tenantId) || null;
     if (instanceName) {
       const { data: inst } = await this.supabase.client
         .from('wa_instances')
@@ -34,15 +50,14 @@ export class EvolutionWebhookController {
         return { ok: false, error: 'invalid webhook secret' };
       }
 
-      if (inst?.tenant_id) tenantId = inst.tenant_id as any;
+      if (inst?.tenant_id) tenantId = String(inst.tenant_id);
     }
 
-    // Derive a best-effort idempotency key from payload (provider might retry delivery)
     const providerEventId =
-      body?.data?.key?.id ||
-      body?.data?.messageId ||
-      body?.messageId ||
-      body?.id ||
+      asString(payloadKey?.id) ||
+      asString(payloadData?.messageId) ||
+      asString(payload?.messageId) ||
+      asString(payload?.id) ||
       null;
 
     const idempotencyKey = providerEventId
@@ -52,27 +67,30 @@ export class EvolutionWebhookController {
           .update(JSON.stringify(body))
           .digest('hex')}`;
 
-    // Optional global secret (kept for emergency), but prefer per-instance secret checked above.
+    const eventIdempotencyKey = eventName ? `${idempotencyKey}:${eventName}` : idempotencyKey;
+
     if (process.env.EVOLUTION_WEBHOOK_SECRET && webhookSecret !== process.env.EVOLUTION_WEBHOOK_SECRET) {
       return { ok: false, error: 'invalid webhook secret' };
     }
 
-    // Persist raw webhook (optional but useful for audit/debug)
-    await this.supabase.client.from('wa_webhook_events').insert({
+    const { error: insertError } = await this.supabase.client.from('wa_webhook_events').insert({
       tenant_id: tenantId,
       instance_name: instanceName,
-      idempotency_key: eventName ? `${idempotencyKey}:${eventName}` : idempotencyKey,
-      payload: { ...body, _event: eventName }
+      idempotency_key: eventIdempotencyKey,
+      payload: payload ? { ...payload, _event: eventName } : { raw: body, _event: eventName }
     });
 
-    // Enqueue processing job
+    if (insertError && insertError.code !== '23505') {
+      throw new Error(insertError.message);
+    }
+
     await this.boss.client.send('wa.inbound.process', {
       tenantId,
       instanceName,
-      idempotencyKey: eventName ? `${idempotencyKey}:${eventName}` : idempotencyKey
+      idempotencyKey: eventIdempotencyKey
     });
 
-    return { ok: true };
+    return { ok: true, duplicate: insertError?.code === '23505' };
   }
 
   @Post('evolution')
@@ -80,21 +98,19 @@ export class EvolutionWebhookController {
   async evolution(
     @Headers('x-webhook-secret') webhookSecret: string | undefined,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
-    @Body() body: any
+    @Body() body: unknown
   ) {
     return this.handleEvolutionWebhook(webhookSecret, tenantHeader, body);
   }
 
-  // Evolution can be configured with webhookByEvents=true, which appends /<event> to the URL.
   @Post('evolution/:event')
   @HttpCode(200)
   async evolutionByEvent(
     @Param('event') event: string,
     @Headers('x-webhook-secret') webhookSecret: string | undefined,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
-    @Body() body: any
+    @Body() body: unknown
   ) {
     return this.handleEvolutionWebhook(webhookSecret, tenantHeader, body, event);
   }
-
 }

@@ -106,7 +106,6 @@ export default function NewTaskModal() {
 
   if (!isNewTaskModalOpen) return null;
 
-  const selectedPriority = PRIORITIES.find((p) => p.value === prioridade)!;
   const activeOps = operadores.filter((o) => o.status === "ativo");
 
   return (

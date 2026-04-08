@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useGestor } from "@/context/GestorContext";
-import { Task } from "@/lib/types";
+import { Status, Task } from "@/lib/types";
 import * as api from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { mapTaskEventToActivity } from "@/lib/taskEvents";
 import { supabase, isRealtimeEnabled } from "@/lib/supabaseClient";
 
@@ -35,6 +37,7 @@ export default function DashboardPage() {
     toggleSubtarefa,
     reloadAll,
   } = useGestor();
+  const currentTaskId = selectedTask?.id ?? null;
 
   useEffect(() => {
     setMounted(true);
@@ -49,7 +52,7 @@ export default function DashboardPage() {
   }, [mounted, selectTask]);
 
   useEffect(() => {
-    if (!selectedTask) {
+    if (!currentTaskId) {
       setActivities([]);
       return;
     }
@@ -64,7 +67,7 @@ export default function DashboardPage() {
       }
 
       try {
-        const res = await api.listTaskEvents(selectedTask.id);
+        const res = await api.listTaskEvents(currentTaskId);
         const evts = res.data || [];
         if (cancelled) return;
 
@@ -75,8 +78,8 @@ export default function DashboardPage() {
           lastTopEventId = topId;
           await reloadAll();
         }
-      } catch (e: any) {
-        if (!cancelled) setEventsError(e?.message || String(e));
+      } catch (e: unknown) {
+        if (!cancelled) setEventsError(getErrorMessage(e));
       } finally {
         if (!cancelled && !opts?.silent) setEventsLoading(false);
       }
@@ -85,19 +88,19 @@ export default function DashboardPage() {
     void load();
 
     // Realtime via Supabase (preferred). Fallback to polling when env vars not set.
-    let channel: any = null;
-    let timer: any = null;
+    let channel: RealtimeChannel | null = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
 
     if (isRealtimeEnabled() && supabase) {
       channel = supabase
-        .channel(`task:${selectedTask.id}`)
+        .channel(`task:${currentTaskId}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
             table: 'task_events',
-            filter: `task_id=eq.${selectedTask.id}`,
+            filter: `task_id=eq.${currentTaskId}`,
           },
           () => {
             void load({ silent: true });
@@ -109,7 +112,7 @@ export default function DashboardPage() {
             event: '*',
             schema: 'public',
             table: 'tasks',
-            filter: `id=eq.${selectedTask.id}`,
+            filter: `id=eq.${currentTaskId}`,
           },
           () => {
             void reloadAll();
@@ -127,7 +130,7 @@ export default function DashboardPage() {
       if (timer) clearInterval(timer);
       if (channel && supabase) supabase.removeChannel(channel);
     };
-  }, [selectedTask?.id, reloadAll]);
+  }, [currentTaskId, reloadAll]);
 
   // Grouping tasks roughly by "hoje", "amanha", "proximos" (for UI sake)
   // To avoid hydration mismatch, we depend on these computations only when mounted
@@ -357,9 +360,10 @@ export default function DashboardPage() {
                       try {
                         await notifyTask(selectedTask.id);
                         alert('Notificação reenviada (job enfileirado).');
-                      } catch (e: any) {
-                        setNotifyError(e?.message || String(e));
-                        alert(`Falha ao reenviar notificação: ${e?.message || String(e)}`);
+                      } catch (e: unknown) {
+                        const message = getErrorMessage(e);
+                        setNotifyError(message);
+                        alert(`Falha ao reenviar notificação: ${message}`);
                       } finally {
                         setNotifyBusy(false);
                       }
@@ -395,6 +399,12 @@ export default function DashboardPage() {
                 {selectedTask.titulo}
               </h3>
 
+              {notifyError && (
+                <div className="mb-4 rounded-xl border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-error">
+                  {notifyError}
+                </div>
+              )}
+
               <div className="space-y-6">
                 {/* Status */}
                 <div className="space-y-2">
@@ -403,7 +413,7 @@ export default function DashboardPage() {
                   </label>
                   <select
                     value={selectedTask.status}
-                    onChange={(e) => changeStatus(selectedTask.id, e.target.value as any)}
+                    onChange={(e) => changeStatus(selectedTask.id, e.target.value as Status)}
                     className="w-full bg-surface-container-highest p-3 rounded-lg text-sm font-medium text-on-surface outline-none cursor-pointer focus:ring-1 focus:ring-primary/30 [color-scheme:dark]"
                   >
                     <option value="pendente">Pendente</option>

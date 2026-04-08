@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { API_BASE_URL } from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -45,8 +46,8 @@ export default function CadastroPage() {
       if (j?.tenantId) window.localStorage.setItem('gestor.tenantId', j.tenantId);
 
       window.location.href = '/';
-    } catch (err: any) {
-      setError(err?.message || 'Falha no cadastro');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Falha no cadastro'));
     } finally {
       setLoading(false);
     }

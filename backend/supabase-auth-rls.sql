@@ -25,6 +25,7 @@ alter table wa_instances enable row level security;
 alter table wa_webhook_events enable row level security;
 alter table wa_messages enable row level security;
 alter table operator_state enable row level security;
+alter table if exists tenant_alerts enable row level security;
 
 -- 3) Helper: check membership
 create or replace function is_tenant_member(tid uuid)
@@ -101,6 +102,19 @@ create policy operator_state_tenant_member_all
 on operator_state for all
 using (is_tenant_member(tenant_id))
 with check (is_tenant_member(tenant_id));
+
+do $$
+begin
+  if to_regclass('public.tenant_alerts') is not null then
+    execute 'drop policy if exists tenant_alerts_tenant_member_all on tenant_alerts';
+    execute $policy$
+      create policy tenant_alerts_tenant_member_all
+      on tenant_alerts for all
+      using (is_tenant_member(tenant_id))
+      with check (is_tenant_member(tenant_id))
+    $policy$;
+  end if;
+end $$;
 
 -- Notes:
 -- - For server-side jobs (worker/webhooks) you will keep using service role key (bypasses RLS).

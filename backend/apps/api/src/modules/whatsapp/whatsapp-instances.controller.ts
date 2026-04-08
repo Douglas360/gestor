@@ -19,7 +19,7 @@ export class WhatsAppInstancesController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const lim = limit ? Number(limit) : 20;
     const off = offset ? Number(offset) : 0;
@@ -37,7 +37,7 @@ export class WhatsAppInstancesController {
 
   @Post()
   async create(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
     const instanceName = body?.instanceName || `t_${tenantId}_${crypto.randomBytes(6).toString('hex')}`;
     const token = crypto.randomBytes(18).toString('hex');
     const webhookSecret = crypto.randomBytes(18).toString('hex');
@@ -79,7 +79,7 @@ export class WhatsAppInstancesController {
     @Param('tenantId') tenantId: string,
     @Param('instanceId') instanceId: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data: inst, error } = await sb
       .from('wa_instances')
@@ -99,7 +99,7 @@ export class WhatsAppInstancesController {
     @Param('tenantId') tenantId: string,
     @Param('instanceId') instanceId: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data: inst, error } = await sb
       .from('wa_instances')
@@ -129,7 +129,7 @@ export class WhatsAppInstancesController {
     @Param('tenantId') tenantId: string,
     @Param('instanceId') instanceId: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data: inst, error } = await sb
       .from('wa_instances')

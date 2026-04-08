@@ -13,7 +13,7 @@ export class TasksCrudController {
 
   @Post()
   async create(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
     const payload: any = {
       tenant_id: tenantId,
       title: String(body?.title || ''),
@@ -73,7 +73,7 @@ export class TasksCrudController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     let q = sb.from('tasks').select('*').eq('tenant_id', tenantId);
     if (status) q = q.eq('status', status);
@@ -89,7 +89,7 @@ export class TasksCrudController {
 
   @Get(':taskId')
   async get(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data, error } = await sb
       .from('tasks')
@@ -109,7 +109,7 @@ export class TasksCrudController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const lim = limit ? Number(limit) : 50;
     const off = offset ? Number(offset) : 0;
@@ -133,7 +133,7 @@ export class TasksCrudController {
     @Param('taskId') taskId: string,
     @Body() body: any
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const patch: any = {};
     if (body?.title !== undefined) patch.title = String(body.title);
@@ -168,7 +168,7 @@ export class TasksCrudController {
 
   @Delete(':taskId')
   async remove(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { error } = await sb
       .from('tasks')

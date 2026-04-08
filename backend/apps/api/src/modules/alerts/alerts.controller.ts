@@ -1,4 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  type CreateTenantAlertInput,
+  type UpdateTenantAlertInput,
+  zCreateTenantAlert,
+  zUpdateTenantAlert
+} from '@gestor/shared';
 import { SupabaseService } from '../db/supabase.service.js';
 import { AnyRequest, TenantAuthGuard } from '../auth/tenant-auth.guard.js';
 import { BossService } from '../boss/boss.service.js';
@@ -6,6 +12,24 @@ import { BossService } from '../boss/boss.service.js';
 function scheduleKey(alertId: string) {
   // pg-boss key allows: alphanumeric, underscore, hyphen, period, forward slash
   return `tenant_alert/${alertId}`;
+}
+
+function parseCreateAlert(body: unknown): CreateTenantAlertInput {
+  const parsed = zCreateTenantAlert.safeParse(body);
+  if (!parsed.success) {
+    throw new BadRequestException(parsed.error.issues.map((issue) => issue.message).join('; '));
+  }
+
+  return parsed.data;
+}
+
+function parseUpdateAlert(body: unknown): UpdateTenantAlertInput {
+  const parsed = zUpdateTenantAlert.safeParse(body);
+  if (!parsed.success) {
+    throw new BadRequestException(parsed.error.issues.map((issue) => issue.message).join('; '));
+  }
+
+  return parsed.data;
 }
 
 @UseGuards(TenantAuthGuard)
@@ -18,7 +42,7 @@ export class AlertsController {
 
   @Get()
   async list(@Req() req: AnyRequest, @Param('tenantId') tenantId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     const { data, error } = await sb
       .from('tenant_alerts')
@@ -31,23 +55,23 @@ export class AlertsController {
   }
 
   @Post()
-  async create(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+  async create(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: unknown) {
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
+    const parsed = parseCreateAlert(body);
 
     const payload = {
       tenant_id: tenantId,
-      name: String(body?.name || 'Alerta'),
-      date_mode: String(body?.date_mode || 'overdue'),
-      statuses: Array.isArray(body?.statuses) ? body.statuses.map(String) : ['created', 'in_progress', 'awaiting_evidence'],
-      cron: String(body?.cron || '0 9 * * *'),
-      timezone: String(body?.timezone || 'America/Sao_Paulo'),
-      enabled: body?.enabled ?? true
+      name: parsed.name,
+      date_mode: parsed.date_mode,
+      statuses: parsed.statuses,
+      cron: parsed.cron,
+      timezone: parsed.timezone,
+      enabled: parsed.enabled
     };
 
     const { data, error } = await sb.from('tenant_alerts').insert(payload).select('*').single();
     if (error) throw new Error(error.message);
 
-    // schedule/unschedule
     if (data.enabled) {
       await this.boss.client.schedule(
         'alerts.check_and_notify',
@@ -65,17 +89,22 @@ export class AlertsController {
     @Req() req: AnyRequest,
     @Param('tenantId') tenantId: string,
     @Param('alertId') alertId: string,
-    @Body() body: any
+    @Body() body: unknown
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
+    const patch = parseUpdateAlert(body);
 
-    const patch: any = {};
-    if (body?.name !== undefined) patch.name = String(body.name);
-    if (body?.date_mode !== undefined) patch.date_mode = String(body.date_mode);
-    if (body?.statuses !== undefined) patch.statuses = Array.isArray(body.statuses) ? body.statuses.map(String) : [];
-    if (body?.cron !== undefined) patch.cron = String(body.cron);
-    if (body?.timezone !== undefined) patch.timezone = String(body.timezone);
-    if (body?.enabled !== undefined) patch.enabled = Boolean(body.enabled);
+    if (Object.keys(patch).length === 0) {
+      const { data, error } = await sb
+        .from('tenant_alerts')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('id', alertId)
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    }
 
     const { data, error } = await sb
       .from('tenant_alerts')
@@ -87,7 +116,6 @@ export class AlertsController {
 
     if (error) throw new Error(error.message);
 
-    // Re-schedule
     await this.boss.client.unschedule('alerts.check_and_notify', scheduleKey(alertId));
     if (data.enabled) {
       await this.boss.client.schedule(
@@ -103,7 +131,7 @@ export class AlertsController {
 
   @Delete(':alertId')
   async remove(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Param('alertId') alertId: string) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
 
     await this.boss.client.unschedule('alerts.check_and_notify', scheduleKey(alertId));
 

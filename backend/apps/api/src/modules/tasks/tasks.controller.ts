@@ -18,7 +18,7 @@ export class TasksController {
     @Param('taskId') taskId: string,
     @Body() body: any
   ) {
-    const sb = req.authToken ? this.supabase.clientForAccessToken(req.authToken) : this.supabase.client;
+    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
     // optional override
     const operatorId = body?.operatorId ?? null;
 
