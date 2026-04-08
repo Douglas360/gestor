@@ -26,8 +26,9 @@ export class EvolutionService {
     buttons: Array<{ id: string; text: string }>;
   }) {
     // v2 docs: POST /message/sendButtons/{instance}
+    const number = String(input.to || '').trim().replace(/^\+/, '');
     const { data } = await this.http.post(`/message/sendButtons/${encodeURIComponent(instanceName)}`, {
-      number: input.to,
+      number,
       title: input.title,
       description: input.body,
       footer: input.footer,
@@ -43,11 +44,17 @@ export class EvolutionService {
   }
 
   async sendText(instanceName: string, input: { to: string; text: string }) {
-    const { data } = await this.http.post(`/message/sendText/${encodeURIComponent(instanceName)}`, {
-      number: input.to,
-      text: input.text
-    });
-    return data;
+    const number = String(input.to || '').trim().replace(/^\+/, '');
+    try {
+      const { data } = await this.http.post(`/message/sendText/${encodeURIComponent(instanceName)}`, {
+        number,
+        text: input.text
+      });
+      return data;
+    } catch (err: any) {
+      const detail = err?.response?.data ? JSON.stringify(err.response.data) : err?.message;
+      throw new Error(`Evolution sendText failed: ${detail || 'unknown error'}`);
+    }
   }
 
   async getStatus(instanceName: string) {
