@@ -10,8 +10,18 @@ export class TenantsSettingsController {
   @Get()
   async get(@Req() req: AnyRequest, @Param('tenantId') tenantId: string) {
     const sb = this.supabase.clientForRequestAccessToken(req.authToken);
-    const { data, error } = await sb.from('tenants').select('id, name, admin_wa_phone').eq('id', tenantId).single();
+    const { data, error } = await sb
+      .from('tenants')
+      .select('id, name, admin_wa_phone')
+      .eq('id', tenantId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
+
+    // If RLS blocks or row not visible, avoid 500 and return a minimal object
+    if (!data) {
+      return { id: tenantId, name: null, admin_wa_phone: null } as any;
+    }
+
     return data;
   }
 
