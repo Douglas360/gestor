@@ -9,7 +9,8 @@ export class TenantsSettingsController {
 
   @Get()
   async get(@Req() req: AnyRequest, @Param('tenantId') tenantId: string) {
-    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
+    // Use service role client to bypass RLS (guard already enforces tenant access)
+    const sb = this.supabase.client;
     const { data, error } = await sb
       .from('tenants')
       .select('id, name, admin_wa_phone')
@@ -27,7 +28,7 @@ export class TenantsSettingsController {
 
   @Patch()
   async update(@Req() req: AnyRequest, @Param('tenantId') tenantId: string, @Body() body: any) {
-    const sb = this.supabase.clientForRequestAccessToken(req.authToken);
+    const sb = this.supabase.client;
 
     const patch: any = {};
     if (body?.admin_wa_phone !== undefined) {
